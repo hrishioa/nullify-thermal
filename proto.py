@@ -67,7 +67,7 @@ def save(path, ext='png', close=True, verbose=True):
 def main():
 	print("Program Running...")
 
-	video = cv2.VideoCapture('C:\Users\Hrishi\Dropbox\Projects\Thermal\MOV_2146.mp4')
+	video = cv2.VideoCapture('MOV_2146.mp4')
 	print(video.grab())
 
 	counter = 0
@@ -79,20 +79,25 @@ def main():
 
 		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-		print("Read Frame "+str(counter)+".")
-
-		'''
-		cv2.imshow('frame',frame)
-		if cv2.waitKey(1) & 0xFF == ord('q'):
-			break
-		'''
-
 		#hist = cv2.calcHist([gray],[0],None,[256],[0,256])
 		
-		print(gray.ravel())
+		framedat = gray.ravel()
 
-		plt.hist(gray.ravel(),256,[0,300])
-		plt.show()
+		plt.hist(framedat,256,[0,256])
+
+		#Process the incoming data
+
+		#find out the limit of valid data
+		pointer = int((hist_samples/(temp_max-temp_min))*(threshold_temp-temp_min))
+
+		data = framedat[pointer:]
+
+		data = np.histogram(framedat,bins=256,range=(0,256))[0][pointer:]
+
+		#Plot statistics for now
+		stats = "Pointer: %d \nMean : %.2f \nMedian: %d \nMin : %d \nMax : %d \nSD: %.2f \nMax-Mean: %d" % (pointer,np.mean(data),np.median(data),np.min(data),np.max(data),np.std(data),(np.max(data)-np.mean(data)))
+
+		plt.annotate(stats, xy=(1, 1), xycoords='axes fraction', fontsize=16,horizontalalignment='right', multialignment='left', verticalalignment='top',bbox=dict(facecolor='black', alpha=0.1))
 
 		''' For plotting a color histogram
 		color = ('b','g','r')
@@ -101,10 +106,9 @@ def main():
 			plt.plot(histr,color = col)
 			plt.xlim([0,256])
 			'''
-
-		#save("Histograms/MOV_2146_2/histogram#"+str(counter), ext="png", close=True, verbose=False)
+		#plt.show()
+		save("Histograms/MOV_2146_2/histogram#"+str(counter), ext="png", close=True, verbose=False)
 		print("Frame "+str(counter)+" done.")
-
 
 	video.release()
 	cv2.destroyAllWindows()
