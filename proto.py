@@ -4,11 +4,15 @@ import numpy as np
 from matplotlib import pyplot as plt
 import sys
 from subprocess import call
+import thread
+import pyqtgraph as pg 
+import pyqtgraph.exporters
 
 print(sys.version)
 
 np.set_printoptions(threshold=np.inf)
 
+threadcount=0
 temp_max = 150 #maximum temperature setting for camera
 temp_min = 0 #minimum temperature setting for camera
 threshold_temp = 125 #threshold temperature in Celcius
@@ -66,13 +70,18 @@ def save(path, ext='png', close=True, verbose=True):
 	if verbose:
 		print("Done")
 
-def main():
-	print("Program Running...")
+lock = thread.allocate_lock()
 
-	filename = 'MOV_2150.mp4'
+def video_engine(folder,filename):
+	cpuplot=False
 
-	video = cv2.VideoCapture('Video/'+filename)
-	print(video.grab())
+	global threadcount
+
+	lock.acquire()
+	print("\nStarting thread for file %s. Number of Threads: %d" % (filename,threadcount))
+	lock.release()
+
+	video = cv2.VideoCapture(folder+'/'+filename)
 
 	counter = 0
 	
@@ -118,43 +127,96 @@ def main():
 			firecon=4
 
 		#Plot statistics for now
-		stats = "Pointer: %d \nMean : %.2f \nMedian: %d \nMin : %d \nMax : %d \nSD: %.2f \nMax-Mean: %d\n\nFire Alert:      %d" % (pointer,np.mean(data),np.median(data),np.min(data),np.max(data),np.std(data),maxmean,(firecon))
 
-		plt.hist(framedat,256,[pointer,256])
-		plt.annotate(stats, xy=(1, 1), xycoords='axes fraction', fontsize=16,horizontalalignment='right', multialignment='left', verticalalignment='top',bbox=dict(facecolor='black', alpha=0.1))
+		colorcode = '#00FF00'
 
-		''' For plotting a color histogram
-		color = ('b','g','r')
-		for i,col in enumerate(color):
-			histr = cv2.calcHist([frame],[i],None,[256],[0,256])
-			plt.plot(histr,color = col)
-			plt.xlim([0,256])
-			'''
-		#plt.show()
-		save("Histograms/"+filename+"/histogram#"+str(counter), ext="png", close=True, verbose=False)
-		print(filename+": Frame "+str(counter)+" done.")
+		if(firecon>3):
+			colorcode = '#FF0000'
+		elif(firecon>1):
+			colorcode = '#FFFF00'
 
-		#Now save delta data
-		plt.plot(np.arange(len(delta)),delta)
-		plt.xlabel('Temperature')
-		plt.ylabel('Delta')
-		plt.ylim([-50,50])
-		delstats = "Pointer: %d \nMean : %.2f \nMedian: %d \nMin : %d \nMax : %d \nSD: %.2f \nMax-Mean: %d" % (pointer,np.mean(delta),np.median(delta),np.min(delta),np.max(delta),np.std(delta),(np.max(delta)-np.mean(delta)))
-		plt.annotate(delstats, xy=(1, 1), xycoords='axes fraction', fontsize=16,horizontalalignment='right', multialignment='left', verticalalignment='top',bbox=dict(facecolor='black', alpha=0.1))
-		#plt.show()
-		save("Histograms/"+filename+"/del_histogram#"+str(counter), ext="png", close=True, verbose=False)
+		stats = "<br /><br />Pointer: %d \nMean : %.2f \nMedian: %d \nMin : %d \nMax : %d \n<br >SD: %.2f \nMax-Mean: %d\n\n<font color='%s'>Fire Alert:      %d</font>" % (pointer,np.mean(data),np.median(data),np.min(data),np.max(data),np.std(data),maxmean,colorcode,firecon)
 
+		if(cpuplot==False):
+			plt = pg.plot(data)
+			plt.setTitle(stats)
+			exporter = pg.exporters.ImageExporter(plt.plotItem)
+			exporter.parameters()['width'] = 750
+
+			exporter.export('Histograms/%s/histogram#%d.png' % (filename,counter))
+			plt.close()
+		else:
+			plt.hist(framedat,256,[pointer,256])
+			plt.annotate(stats, xy=(1, 1), xycoords='axes fraction', fontsize=16,horizontalalignment='right', multialignment='left', verticalalignment='top',bbox=dict(facecolor='black', alpha=0.1))
+
+			''' For plotting a color histogram
+			color = ('b','g','r')
+			for i,col in enumerate(color):
+				histr = cv2.calcHist([frame],[i],None,[256],[0,256])
+				plt.plot(histr,color = col)
+				plt.xlim([0,256])
+				'''
+			#plt.show()
+			save("Histograms/"+filename+"/histogram#"+str(counter), ext="png", close=True, verbose=False)
+		
+		print(filename+": Frame "+str(counter)+" done. Threads: "+str(threadcount))
+
+		delstats = "<br /><br />Pointer: %d \nMean : %.2f \nMedian: %d \nMin : %d \nMax : %d \n<br />SD: %.2f \nMax-Mean: %d" % (pointer,np.mean(delta),np.median(delta),np.min(delta),np.max(delta),np.std(delta),(np.max(delta)-np.mean(delta)))
+
+		if(cpuplot==False):
+			plt = pg.plot(delta)
+			exporter = pg.exporters.ImageExporter(plt.plotItem)
+			exporter.parameters()['width'] = 750
+			exporter.export('Histograms/%s/del_histogram#%d.png' % (filename,counter))
+			plt.close()
+		else:
+			#Now save delta data
+			plt.plot(np.arange(len(delta)),delta)
+			plt.xlabel('Temperature')
+			plt.ylabel('Delta')
+			plt.ylim([-50,50])
+			plt.annotate(delstats, xy=(1, 1), xycoords='axes fraction', fontsize=16,horizontalalignment='right', multialignment='left', verticalalignment='top',bbox=dict(facecolor='black', alpha=0.1))
+			#plt.show()
+			#thread.start_new_thread(save,("Histograms/"+filename+"/del_histogram#"+str(counter),))
+			save("Histograms/"+filename+"/del_histogram#"+str(counter), ext="png", close=True, verbose=False)
 
 	video.release()
 	cv2.destroyAllWindows()
 
 	#Run ffmpeg to create video
+	lock.acquire()
 	print("Generating video")
-	call("ffmpeg -framerate 30 -y -i del_histogram#%%d.png del_hist"+filename,shell=True)
-	call("ffmpeg -framerate 30 -y -i histogram#%%d.png hist"+filename,shell=True)
+	call("ffmpeg -framerate 30 -y -i Histograms/"+filename+"/del_histogram#%d.png del_hist"+filename,shell=True)
+	call("ffmpeg -framerate 30 -y -i Histograms/"+filename+"/histogram#%d.png hist"+filename,shell=True)
+	threadcount-=1
+	print("Completed file %s. Threads running: %d" % (filename,threadcount))
+	lock.release()
 
+def main():
+	global threadcount
 
+	print("Program Running...")
 
+	folder = 'X:/HrishiOlickel/Desktop/Thermal/Processing'
+
+	#filename = 'MOV_2150.mp4'
+	#video_engine('Video/'+filename)
+
+	files = os.listdir(folder)
+
+	for video in files:
+		'''
+		while(threadcount>9):
+			pass
+		print("Running file "+folder+"/"+video)
+		threadcount+=1
+		try:
+			thread.start_new_thread(video_engine, (folder,video))
+		except:
+			print "Error: Unable to start thread"
+		'''
+		print("Running file "+folder+"/"+video)
+		video_engine(folder,video)
 
 if __name__ == '__main__':
 	main()
