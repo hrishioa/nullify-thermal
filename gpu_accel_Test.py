@@ -1,8 +1,9 @@
 import pyqtgraph as pg 
 import pyqtgraph.exporters
 import numpy as np
+from PySide import QtGui
 
-import galry
+q = pg.mkQApp()
 
 x = np.array([3,4,0,8,3,7,3,3,5,0,4,5,7,5,4,2,1,0
 ,3,5,4,9,8,0,6,4,15,17,32,6,13,50,56,39,19,11
@@ -13,6 +14,11 @@ x = np.array([3,4,0,8,3,7,3,3,5,0,4,5,7,5,4,2,1,0
 ,17,23,22,15,7,9,1,5,11,7,13,14,54,17,81,247,441,294
 ,194,132,29,28,22])
 
-galry.barplot(x)
-galry.save_image('helloworld.png')
-galry.show()
+plt = pg.plot(x)
+pg.show()
+
+c = raw_input()
+
+q.closeAllWindows()
+
+c = raw_input()

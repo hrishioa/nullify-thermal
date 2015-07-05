@@ -7,10 +7,15 @@ from subprocess import call
 import thread
 import pyqtgraph as pg 
 import pyqtgraph.exporters
+from PyQt4 import QtGui
+import PyQt4
+import time
 
 print(sys.version)
 
 np.set_printoptions(threshold=np.inf)
+
+pgm_start_time = time.time()
 
 threadcount=0
 temp_max = 150 #maximum temperature setting for camera
@@ -44,7 +49,7 @@ def save(path, ext='png', close=True, verbose=True):
 
 	"""
 	
-	# Extract the directory and filename from the given path
+	# Extract the directory and 	filename from the given path
 	directory = os.path.split(path)[0]
 	filename = "%s.%s" % (os.path.split(path)[1], ext)
 	if directory == '':
@@ -73,6 +78,8 @@ def save(path, ext='png', close=True, verbose=True):
 lock = thread.allocate_lock()
 
 def video_engine(folder,filename):
+	global pgm_start_time
+
 	cpuplot=False
 
 	global threadcount
@@ -87,7 +94,13 @@ def video_engine(folder,filename):
 	
 	data = []
 
+	video_start_time = time.time()
+
 	while(video.isOpened()):
+
+		app = pg.mkQApp()
+
+		start_time = time.time()
 
 		counter+=1
 
@@ -95,6 +108,9 @@ def video_engine(folder,filename):
 
 		if ret==False:
 			break
+
+		if(counter%10!=0):
+			continue
 
 		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -138,13 +154,12 @@ def video_engine(folder,filename):
 		stats = "<br /><br />Pointer: %d \nMean : %.2f \nMedian: %d \nMin : %d \nMax : %d \n<br >SD: %.2f \nMax-Mean: %d\n\n<font color='%s'>Fire Alert:      %d</font>" % (pointer,np.mean(data),np.median(data),np.min(data),np.max(data),np.std(data),maxmean,colorcode,firecon)
 
 		if(cpuplot==False):
-			plt = pg.plot(data)
-			plt.setTitle(stats)
-			exporter = pg.exporters.ImageExporter(plt.plotItem)
+			plot = pg.plot(data)
+			plot.setTitle(stats)
+			exporter = pg.exporters.ImageExporter(plot.plotItem)
 			exporter.parameters()['width'] = 750
-
 			exporter.export('Histograms/%s/histogram#%d.png' % (filename,counter))
-			plt.close()
+			#plot.close()
 		else:
 			plt.hist(framedat,256,[pointer,256])
 			plt.annotate(stats, xy=(1, 1), xycoords='axes fraction', fontsize=16,horizontalalignment='right', multialignment='left', verticalalignment='top',bbox=dict(facecolor='black', alpha=0.1))
@@ -158,17 +173,15 @@ def video_engine(folder,filename):
 				'''
 			#plt.show()
 			save("Histograms/"+filename+"/histogram#"+str(counter), ext="png", close=True, verbose=False)
-		
-		print(filename+": Frame "+str(counter)+" done. Threads: "+str(threadcount))
 
 		delstats = "<br /><br />Pointer: %d \nMean : %.2f \nMedian: %d \nMin : %d \nMax : %d \n<br />SD: %.2f \nMax-Mean: %d" % (pointer,np.mean(delta),np.median(delta),np.min(delta),np.max(delta),np.std(delta),(np.max(delta)-np.mean(delta)))
 
 		if(cpuplot==False):
-			plt = pg.plot(delta)
-			exporter = pg.exporters.ImageExporter(plt.plotItem)
+			plot = pg.plot(delta)
+			exporter = pg.exporters.ImageExporter(plot.plotItem)
 			exporter.parameters()['width'] = 750
 			exporter.export('Histograms/%s/del_histogram#%d.png' % (filename,counter))
-			plt.close()
+			#plot.close()
 		else:
 			#Now save delta data
 			plt.plot(np.arange(len(delta)),delta)
@@ -180,24 +193,31 @@ def video_engine(folder,filename):
 			#thread.start_new_thread(save,("Histograms/"+filename+"/del_histogram#"+str(counter),))
 			save("Histograms/"+filename+"/del_histogram#"+str(counter), ext="png", close=True, verbose=False)
 
+		app.closeAllWindows()
+		del plot
+
+		# if(counter%100==0):
+		# 	break
+
+		print("%s: Frame %d done in %f seconds. Time elapsed: Video - %f s, Total - %f s." % (filename,counter,time.time()-start_time,time.time()-video_start_time,time.time()-pgm_start_time))
+
 	video.release()
 	cv2.destroyAllWindows()
 
 	#Run ffmpeg to create video
-	lock.acquire()
 	print("Generating video")
 	call("ffmpeg -framerate 30 -y -i Histograms/"+filename+"/del_histogram#%d.png del_hist"+filename,shell=True)
 	call("ffmpeg -framerate 30 -y -i Histograms/"+filename+"/histogram#%d.png hist"+filename,shell=True)
 	threadcount-=1
-	print("Completed file %s. Threads running: %d" % (filename,threadcount))
-	lock.release()
+	print("Completed file %s in %f seconds." % (filename,time.time()-video_start_time))
 
 def main():
+	global pgm_start_time
 	global threadcount
 
 	print("Program Running...")
 
-	folder = 'X:/HrishiOlickel/Desktop/Thermal/Processing'
+	folder = 'X:/HrishiOlickel/Desktop/Thermal/Video2'
 
 	#filename = 'MOV_2150.mp4'
 	#video_engine('Video/'+filename)
@@ -217,6 +237,8 @@ def main():
 		'''
 		print("Running file "+folder+"/"+video)
 		video_engine(folder,video)
+
+		print("Completed in %f seconds.",time.time()-pgm_start_time)
 
 if __name__ == '__main__':
 	main()
